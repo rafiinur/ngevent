@@ -1,30 +1,34 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
 import "./globals.css";
-import { AuthInitializer } from "@/components/auth";
+import { Plus_Jakarta_Sans } from "next/font/google";
+import { AuthInitializer } from "@/features/auth/components";
+import { Header, Footer } from "@/components/layout";
 
-const inter = Inter({
-  variable: "--font-sans",
-  subsets: ["latin"],
+const plusJakartaSans = Plus_Jakarta_Sans({
+	variable: "--font-sans",
+	subsets: ["latin"],
 });
 
 export const metadata: Metadata = {
-  title: "NgEvent - RSVP Event Platform",
-  description: "Buat dan kelola event dengan mudah. Dapatkan konfirmasi kehadiran melalui RSVP digital.",
+	title: "Ngevent - RSVP Event Platform",
+	description:
+		"Buat dan kelola event dengan mudah. Dapatkan konfirmasi kehadiran melalui RSVP digital.",
 };
 
 export default function RootLayout({
-  children,
+	children,
 }: Readonly<{
-  children: React.ReactNode;
+	children: React.ReactNode;
 }>) {
-  return (
-    <html lang="id" suppressHydrationWarning>
-      <body className={`${inter.variable} font-sans antialiased`}>
-        <AuthInitializer>
-          {children}
-        </AuthInitializer>
-      </body>
-    </html>
-  );
+	return (
+		<html lang="id" suppressHydrationWarning>
+			<body className={`${plusJakartaSans.variable} font-sans antialiased`}>
+				<AuthInitializer>
+					<Header />
+					<main className="min-h-screen">{children}</main>
+					<Footer />
+				</AuthInitializer>
+			</body>
+		</html>
+	);
 }

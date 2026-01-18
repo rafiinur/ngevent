@@ -1,0 +1,122 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ============================================
+    // HELPER FUNCTIONS
+    // ============================================
+
+    // Cek apakah user sudah login
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Cek kepemilikan dokumen berdasarkan userId
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+
+    // Cek apakah user adalah admin dari organisasi
+    function isOrgAdmin(orgId) {
+      let user = get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+      return user.memberships != null && 
+      user.memberships.hasAny([{'orgId': orgId, 'role': 'admin'}]);
+    }
+
+    // Cek apakah user adalah member dari organisasi (admin atau member)
+    function isOrgMember(orgId) {
+      let user = get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+      return user.memberships != null && (
+      user.memberships.hasAny([{'orgId': orgId, 'role': 'admin'}]) ||
+      user.memberships.hasAny([{'orgId': orgId, 'role': 'member'}])
+      );
+    }
+
+    // Cek apakah user adalah owner dari organisasi
+    function isOrgOwner(orgId) {
+      return get(/databases/$(database)/documents/organizations/$(orgId)).data.ownerId == request.auth.uid;
+    }
+
+    // ============================================
+    // COLLECTION: USERS
+    // ============================================
+    match /users/{userId} {
+      // User yang login bisa membaca profil user lain
+      allow read: if isSignedIn();
+
+      // User bisa membuat profil untuk dirinya sendiri
+      // Memberships harus kosong saat create (akan diupdate via server/admin)
+      allow create: if isOwner(userId) && 
+      request.resource.data.memberships == [];
+
+      // User bisa update profil sendiri KECUALI memberships
+      // Memberships hanya bisa diubah oleh admin org atau cloud function
+      allow update: if isOwner(userId) && 
+      request.resource.data.memberships == resource.data.memberships;
+    }
+
+    // ============================================
+    // COLLECTION: ORGANIZATIONS
+    // ============================================
+    match /organizations/{orgId} {
+      // Siapa pun bisa melihat organisasi (untuk discovery)
+      allow read: if true;
+
+      // User yang login bisa membuat organisasi
+      // ownerId harus sama dengan uid yang membuat
+      allow create: if isSignedIn() && 
+      request.resource.data.ownerId == request.auth.uid;
+
+      // Hanya owner organisasi yang bisa update/delete
+      allow update, delete: if isSignedIn() && isOrgOwner(orgId);
+    }
+
+    // ============================================
+    // COLLECTION: EVENTS
+    // ============================================
+    match /events/{eventId} {
+      // Siapa pun (termasuk yang tidak login) bisa melihat event
+      allow read: if true;
+
+      // Hanya admin organisasi yang bisa membuat event untuk org tersebut
+      allow create: if isSignedIn() && 
+      (isOrgAdmin(request.resource.data.orgId) || 
+      isOrgOwner(request.resource.data.orgId));
+
+      // Hanya admin/owner organisasi yang bisa update/delete event
+      allow update, delete: if isSignedIn() && 
+      (isOrgAdmin(resource.data.orgId) || 
+      isOrgOwner(resource.data.orgId));
+    }
+
+    // ============================================
+    // COLLECTION: REGISTRATIONS (replaces RSVPs)
+    // ============================================
+    match /registrations/{registrationId} {
+      // Admin org bisa melihat semua registrasi untuk event organisasinya
+      // Guest bisa melihat registrasi sendiri berdasarkan email (untuk check status)
+      allow read: if isSignedIn() && (
+      isOrgAdmin(resource.data.orgId) || 
+      isOrgOwner(resource.data.orgId)
+      );
+
+      // Siapa pun bisa membuat registrasi (untuk guest yang tidak perlu login)
+      // Validasi qrHash harus ada
+      allow create: if request.resource.data.qrHash != null &&
+      request.resource.data.qrHash.size() > 0;
+
+      // Update status hanya bisa dilakukan oleh admin/owner org
+      // (untuk check-in dan cancel)
+      allow update: if isSignedIn() && (
+      isOrgAdmin(resource.data.orgId) || 
+      isOrgOwner(resource.data.orgId)
+      );
+
+      // Delete hanya oleh admin/owner
+      allow delete: if isSignedIn() && (
+      isOrgAdmin(resource.data.orgId) || 
+      isOrgOwner(resource.data.orgId)
+      );
+    }
+  }
+}
